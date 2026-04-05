@@ -4,7 +4,7 @@
 <img src="/Resources/Toucan.jpg" />
     <br>
     <br>
-    <b><i>Single file small uci chess engine 2200 elo.</i></b>
+    <b><i>Single file small uci chess engine 1800 elo.</i></b>
     <br>
     <br>
     <img src="https://img.shields.io/github/downloads/Thibor/Toucan/total?color=critical&style=for-the-badge">
