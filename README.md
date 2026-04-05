@@ -1,0 +1,28 @@
+# Toucan
+
+<div align="center" style="padding-top: 50px">
+<img src="/Resources/Toucan.jpg" />
+    <br>
+    <br>
+    <b><i>Single file small uci chess engine 2200 elo.</i></b>
+    <br>
+    <br>
+    <img src="https://img.shields.io/github/downloads/Thibor/Toucan/total?color=critical&style=for-the-badge">
+    <img src="https://img.shields.io/github/license/Thibor/Toucan?color=blue&style=for-the-badge">
+    <br>
+    <img src="https://img.shields.io/github/v/release/Thibor/Toucan?color=blue&label=Latest%20release&style=for-the-badge">
+    <img src="https://img.shields.io/github/last-commit/Thibor/Toucan?color=critical&style=for-the-badge">
+</div>
+
+Toucan is a complete, FIDE-rules-compliant chess engine
+
+## Features
+
+- Single file
+- Board: pieces[144] (12x12)
+- En passant
+- Underpromotions (knight, bishop, rook)
+- repetition detection
+- 50-move rule
+- Stalemate and checkmate reported correctly to the GUI
+
