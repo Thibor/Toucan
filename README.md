@@ -14,7 +14,7 @@
     <img src="https://img.shields.io/github/last-commit/Thibor/Toucan?color=critical&style=for-the-badge">
 </div>
 
-Unicorn is a complete, FIDE-rules-compliant chess engine
+FIDE-rules-compliant chess engine
 
 ## Features
 
