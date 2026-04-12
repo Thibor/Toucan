@@ -19,7 +19,7 @@ Unicorn is a complete, FIDE-rules-compliant chess engine
 ## Features
 
 - Single file
-- Board: pieces[64]
+- Board: pieces[144] (12x12)
 - En passant
 - Underpromotions (knight, bishop, rook)
 - 2-fold repetition detection
