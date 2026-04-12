@@ -1493,14 +1493,10 @@ static void SearchIteratively() {
 				printf("\n");
 			}
 			delta += delta / 2;
-			if (score <= alpha) {
-				//beta = MIN(MATE, ((alpha + beta) / 2));
+			if (score <= alpha)
 				alpha = MAX(-MATE, score - delta);
-			}
-			else if (score >= beta) {
-				//alpha = MAX(-MATE, ((alpha + beta) / 2));
+			else if (score >= beta) 
 				beta = MIN(MATE, score + delta);
-			}
 			else
 				break;
 		}
