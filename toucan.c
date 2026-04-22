@@ -22,7 +22,7 @@
 #define MIN(a, bBoard) ((a) < (bBoard) ? (a) : (bBoard))
 #define MATE 32000
 #define INF 32001
-#define MAX_PLY 1024
+#define MAX_PLY 64
 #define NAME "Toucan"
 #define VERSION "2026-04-04"
 #define START_FEN "rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1"
@@ -120,19 +120,19 @@ typedef struct {
 	int movesNum;
 	int moveNext;
 	int noisy;
-}SMoveList;
+}MoveList;
 
 typedef struct {
 	U64 hash;
 	int move;
 	int score;
 	int depth;
-	U32 flag;
-}TT_Entry;
+	U8 flag;
+}TTEntry;
 
 typedef struct {
-	int post;
-	int stop;
+	U8 post;
+	U8 stop;
 	int depthLimit;
 	U64 timeStart;
 	U64 timeLimit;
@@ -486,7 +486,7 @@ int bKings[2] = { 0,0 };
 U64 keys[16 * 144];
 int historyCount = 0;
 U64 historyHash[1024];
-TT_Entry  tt[TT_SIZE];
+TTEntry  tt[TT_SIZE];
 SearchInfo info;
 
 static U64 Rand64(void) {
@@ -547,7 +547,8 @@ static int Permill() {
 }
 
 static int IsRepetition(U64 hash) {
-	for (int n = historyCount - 4; n >= historyCount - bMove50 && n >= 0; n -= 2) {
+	int limit = max(0, historyCount - bMove50);
+	for (int n = historyCount - 4; n >= limit; n -= 2) {
 		if (historyHash[n] == hash)
 			return TRUE;
 	}
@@ -725,7 +726,7 @@ int movePromotePiece(move_t move) {
 	return (int)(((move & MOVE_PROMAS_MASK) >> MOVE_PROMAS_BITS) + 2);
 }
 
-static int AddTT(SMoveList* ml, move_t move) {
+static int AddTT(MoveList* ml, move_t move) {
 	for (int n = 0; n < ml->movesNum; n++)
 		if (ml->moves[n] == move) {
 			ml->ranks[n] = 32000;
@@ -734,7 +735,7 @@ static int AddTT(SMoveList* ml, move_t move) {
 	return 0;
 }
 
-static void AddQuiet(SMoveList* ml, move_t move) {
+static void AddQuiet(MoveList* ml, move_t move) {
 	if (ml->noisy)
 		return;
 	ml->moves[ml->movesNum] = move;
@@ -745,13 +746,13 @@ static void AddQuiet(SMoveList* ml, move_t move) {
 const int RANK_ATTACKER[] = { 0,    600,  500,  400,  300,  200,  100, 0, 0,    600,  500,  400,  300,  200,  100 };
 const int RANK_DEFENDER[] = { 2000, 1000, 3000, 3000, 5000, 9000, 0,   0, 2000, 1000, 3000, 3000, 5000, 9000, 0 };
 
-static void AddNoisy(SMoveList* ml, move_t move) {
+static void AddNoisy(MoveList* ml, move_t move) {
 	ml->moves[ml->movesNum] = move;
 	ml->ranks[ml->movesNum] = RANK_ATTACKER[moveFromObj(move)] + RANK_DEFENDER[moveToObj(move)];
 	ml->movesNum++;
 }
 
-static move_t GetNextMove(SMoveList* ml) {
+static move_t GetNextMove(MoveList* ml) {
 	if (ml->moveNext >= ml->movesNum)
 		return 0;
 	int bstIndex = ml->moveNext;
@@ -770,7 +771,7 @@ static move_t GetNextMove(SMoveList* ml) {
 	return bstMove;
 }
 
-static void GenWhiteCastlingMoves(SMoveList* ml) {
+static void GenWhiteCastlingMoves(MoveList* ml) {
 
 	int* b = bBoard;
 
@@ -794,7 +795,7 @@ static void GenWhiteCastlingMoves(SMoveList* ml) {
 	}
 }
 
-static void GenBlackCastlingMoves(SMoveList* ml) {
+static void GenBlackCastlingMoves(MoveList* ml) {
 
 	int* b = bBoard;
 
@@ -818,7 +819,7 @@ static void GenBlackCastlingMoves(SMoveList* ml) {
 	}
 }
 
-static void GenPawnMoves(SMoveList* ml, move_t frMove) {
+static void GenPawnMoves(MoveList* ml, move_t frMove) {
 	const int fr = moveFromSq(frMove);
 	const int cx = ColourIndex(bTurn);
 	const int* CAN_CAPTURE = WB_CAN_CAPTURE[cx];
@@ -839,7 +840,7 @@ static void GenPawnMoves(SMoveList* ml, move_t frMove) {
 		AddNoisy(ml, frMove | (toObj << MOVE_TOOBJ_BITS) | to);
 }
 
-static void GenEnPassPawnMoves(SMoveList* ml, move_t frMove) {
+static void GenEnPassPawnMoves(MoveList* ml, move_t frMove) {
 	const int fr = moveFromSq(frMove);
 	const int cx = ColourIndex(bTurn);
 	const int OFFSET_DIAG1 = WB_OFFSET_DIAG1[cx];
@@ -853,7 +854,7 @@ static void GenEnPassPawnMoves(SMoveList* ml, move_t frMove) {
 		AddNoisy(ml, frMove | to | MOVE_EPTAKE_MASK);
 }
 
-static void GenHomePawnMoves(SMoveList* ml, move_t frMove) {
+static void GenHomePawnMoves(MoveList* ml, move_t frMove) {
 	const int fr = moveFromSq(frMove);
 	const int cx = ColourIndex(bTurn);
 	const int* CAN_CAPTURE = WB_CAN_CAPTURE[cx];
@@ -878,7 +879,7 @@ static void GenHomePawnMoves(SMoveList* ml, move_t frMove) {
 		AddNoisy(ml, frMove | (toObj << MOVE_TOOBJ_BITS) | to);
 }
 
-static void GenPromotePawnMoves(SMoveList* ml, move_t frMove) {
+static void GenPromotePawnMoves(MoveList* ml, move_t frMove) {
 	const int fr = moveFromSq(frMove);
 	const int cx = ColourIndex(bTurn);
 	const int* CAN_CAPTURE = WB_CAN_CAPTURE[cx];
@@ -915,7 +916,7 @@ static void GenPromotePawnMoves(SMoveList* ml, move_t frMove) {
 	}
 }
 
-static void GenKingMoves(SMoveList* ml, move_t frMove) {
+static void GenKingMoves(MoveList* ml, move_t frMove) {
 	const int fr = moveFromSq(frMove);
 	const int cx = ColourIndex(bTurn);
 	const int cy = ColourIndex(ColourToggle(bTurn));
@@ -930,7 +931,7 @@ static void GenKingMoves(SMoveList* ml, move_t frMove) {
 	}
 }
 
-static void GenKnightMoves(SMoveList* ml, move_t frMove) {
+static void GenKnightMoves(MoveList* ml, move_t frMove) {
 
 	int* b = bBoard;
 
@@ -953,7 +954,7 @@ static void GenKnightMoves(SMoveList* ml, move_t frMove) {
 	}
 }
 
-void GenBishopMoves(SMoveList* ml, move_t frMove) {
+void GenBishopMoves(MoveList* ml, move_t frMove) {
 
 	int* b = bBoard;
 
@@ -979,7 +980,7 @@ void GenBishopMoves(SMoveList* ml, move_t frMove) {
 	}
 }
 
-static void GenRookMoves(SMoveList* ml, move_t frMove) {
+static void GenRookMoves(MoveList* ml, move_t frMove) {
 	const int fr = moveFromSq(frMove);
 	const int cx = ColourIndex(bTurn);
 	const int* CAN_CAPTURE = WB_CAN_CAPTURE[cx];
@@ -1002,7 +1003,7 @@ static void GenRookMoves(SMoveList* ml, move_t frMove) {
 	}
 }
 
-static void GenQueenMoves(SMoveList* ml, move_t frMove) {
+static void GenQueenMoves(MoveList* ml, move_t frMove) {
 	const int fr = moveFromSq(frMove);
 	const int cx = ColourIndex(bTurn);
 	const int* CAN_CAPTURE = WB_CAN_CAPTURE[cx];
@@ -1025,7 +1026,7 @@ static void GenQueenMoves(SMoveList* ml, move_t frMove) {
 	}
 }
 
-static void GenMoves(SMoveList* ml) {
+static void GenMoves(MoveList* ml) {
 	const int cx = ColourIndex(bTurn);
 	const int* OUR_PIECE = WB_OUR_PIECE[cx];
 	const int HOME_RANK = WB_HOME_RANK[cx];
@@ -1081,7 +1082,7 @@ static void GenMoves(SMoveList* ml) {
 	}
 }
 
-static void InitMoveList(SMoveList* ml, int noisy) {
+static void InitMoveList(MoveList* ml, int noisy) {
 	ml->noisy = noisy;
 	ml->movesNum = 0;
 	ml->moveNext = 0;
@@ -1216,7 +1217,7 @@ static void UnmakeMove(move_t move) {
 }
 
 static void PlayUciMove(char* uciMove) {
-	SMoveList ml;
+	MoveList ml;
 	InitMoveList(&ml, ALL_MOVES);
 	move_t move = 0;
 	while ((move = GetNextMove(&ml))) {
@@ -1245,7 +1246,7 @@ static U32 PerftDriver(int depth) {
 	U32 count = 0;
 	move_t move;
 	SCache sc;
-	SMoveList ml;
+	MoveList ml;
 	CacheWrite(&sc);
 	InitMoveList(&ml, ALL_MOVES);
 	while ((move = GetNextMove(&ml))) {
@@ -1296,7 +1297,7 @@ void PrintPerformanceHeader() {
 
 static void PrintPv(move_t move) {
 	SCache sc;
-	SMoveList ml;
+	MoveList ml;
 	CacheWrite(&sc);
 	InitMoveList(&ml, ALL_MOVES);
 	if (!AddTT(&ml, move))
@@ -1311,8 +1312,8 @@ static void PrintPv(move_t move) {
 	}
 	printf(" %s", MoveToUci(move));
 	const U64 hash = GetHash();
-	TT_Entry* tt_entry = tt + (hash % TT_MASK);
-	if (tt_entry->hash != hash || IsRepetition(hash)) {
+	TTEntry* tt_entry = tt + (hash % TT_MASK);
+	if (tt_entry->hash != hash || tt_entry->flag != EXACT  || IsRepetition(hash)) {
 		UnmakeMove(move);
 		CacheRead(&sc);
 		return;
@@ -1324,13 +1325,26 @@ static void PrintPv(move_t move) {
 	CacheRead(&sc);
 }
 
+void PrintInfo(int depth, int score) {
+	printf("info depth %d score ", depth);
+	if (abs(score) < MATE - MAX_PLY)
+		printf("cp %d", score);
+	else
+		printf("mate %d", (score > 0 ? (MATE - score + 1) >> 1 : -(MATE + score) >> 1));
+	printf(" time %lld", GetTimeMs() - info.timeStart);
+	printf(" nodes %lld", info.nodes);
+	printf(" hashfull %d pv", Permill());
+	PrintPv(tBestMove);
+	printf("\n");
+}
+
 static int SearchQuiescence(int alpha, int beta, int depth, int ply) {
 	if (CheckUp())
 		return 0;
 	if (ply >= MAX_PLY)
 		return EvalPosition();
 	U64 hash = GetHash();
-	TT_Entry* tt_entry = tt + (hash % TT_MASK);
+	TTEntry* tt_entry = tt + (hash % TT_MASK);
 	int tt_move = 0;
 	if (tt_entry->hash == hash) {
 		tt_move = tt_entry->move;
@@ -1351,7 +1365,7 @@ static int SearchQuiescence(int alpha, int beta, int depth, int ply) {
 	int score = 0;
 	int played = 0;
 	SCache sc;
-	SMoveList ml;
+	MoveList ml;
 	CacheWrite(&sc);
 	InitMoveList(&ml, NOISY_MOVES);
 	while ((move = GetNextMove(&ml))) {
@@ -1402,7 +1416,7 @@ static int SearchAlpha(int alpha, int beta, int depth, int ply) {
 	if (IsRepetition(hash) || bMove50 >= 100)
 		return 0;
 	int tt_move = 0;
-	TT_Entry* tt_entry = tt + (hash % TT_MASK);
+	TTEntry* tt_entry = tt + (hash % TT_MASK);
 	if (tt_entry->hash == hash) {
 		tt_move = tt_entry->move;
 		if (tt_entry->depth >= depth)
@@ -1418,7 +1432,7 @@ static int SearchAlpha(int alpha, int beta, int depth, int ply) {
 	int score = 0;
 	int legalMoves = 0;
 	SCache sc;
-	SMoveList ml;
+	MoveList ml;
 	CacheWrite(&sc);
 	InitMoveList(&ml, ALL_MOVES);
 	if (tt_move)
@@ -1442,8 +1456,10 @@ static int SearchAlpha(int alpha, int beta, int depth, int ply) {
 			if (bestScore > alpha) {
 				alpha = bestScore;
 				tt_flag = EXACT;
-				if (rootNode)
+				if (rootNode) {
 					tBestMove = bestMove;
+					PrintInfo(depth, bestScore);
+				}
 				if (bestScore >= beta) {
 					tt_flag = UPPER;
 					break;
@@ -1480,18 +1496,6 @@ static void SearchIteratively() {
 			score = SearchAlpha(alpha, beta, depth, 0);
 			if (info.stop)
 				break;
-			if (info.post) {
-				printf("info depth %d score ", depth);
-				if (abs(score) < MATE - MAX_PLY)
-					printf("cp %d", score);
-				else
-					printf("mate %d", (score > 0 ? (MATE - score + 1) >> 1 : -(MATE + score) >> 1));
-				printf(" time %lld", GetTimeMs() - info.timeStart);
-				printf(" nodes %lld", info.nodes);
-				printf(" hashfull %d pv", Permill());
-				PrintPv(tBestMove);
-				printf("\n");
-			}
 			delta += delta / 2;
 			if (score <= alpha)
 				alpha = MAX(-MATE, score - delta);
