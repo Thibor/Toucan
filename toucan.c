@@ -1,7 +1,6 @@
-// E == EMPTY, X = OFF BOARD, - == CANNOT HAPPEN
+// E => EMPTY, X => OFF BOARD, - => CANNOT HAPPEN
 // 0  1  2  3  4  5  6  7  8  9  10 11 12 13 14 15
-// E  W  W  W  W  W  W  X  -  B  B  B  B  B  B  -
-// E  P  N  B  R  Q  K  X  -  P  N  B  R  Q  K  -
+// E  P  N  B  R  Q  K  X  -  p  n  b  r  q  k  -
 
 #include <stdio.h>
 #include <stdlib.h>
@@ -15,30 +14,24 @@
 #define U32 unsigned __int32
 #define S64 signed __int64
 #define U64 unsigned __int64
-#define move_t unsigned __int32
+#define Move unsigned __int32
 #define FALSE 0
 #define TRUE 1
-#define MAX(a, bBoard) ((a) > (bBoard) ? (a) : (bBoard))
-#define MIN(a, bBoard) ((a) < (bBoard) ? (a) : (bBoard))
+#define MAX(a, b) ((a) > (b) ? (a) : (b))
+#define MIN(a, b) ((a) < (b) ? (a) : (b))
 #define MATE 32000
 #define INF 32001
 #define MAX_PLY 64
 #define NAME "Toucan"
 #define VERSION "2026-04-04"
 #define START_FEN "rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1"
-#define WHITE 0x0
-#define BLACK 0x8
 
 #define PIECE_MASK  0x7
 #define COLOUR_MASK 0x8
 
-#define PAWN   1
-#define KNIGHT 2
-#define BISHOP 3
-#define ROOK   4
-#define QUEEN  5
-#define KING   6
-#define EDGE   7
+enum Color { WHITE = 0, BLACK = 8 };
+enum Bound { UPPER, LOWER, EXACT };
+enum PieceType { PAWN = 1, KNIGHT, BISHOP, ROOK, QUEEN, KING, EDGE };
 
 #define W_PAWN   PAWN
 #define W_KNIGHT KNIGHT
@@ -112,10 +105,8 @@
 
 #define FLIP64(sq) ((sq)^56)
 
-enum Bound { UPPER, LOWER, EXACT };
-
 typedef struct {
-	move_t moves[MAX_MOVES];
+	Move moves[MAX_MOVES];
 	int ranks[MAX_MOVES];
 	int movesNum;
 	int moveNext;
@@ -146,7 +137,7 @@ typedef struct {
 	int move50;
 }SCache;
 
-move_t tBestMove = 0;
+Move tBestMove = 0;
 
 const int KNIGHT_OFFSETS[] = { 25,-25,23,-23,14,-14,10,-10 };
 const int BISHOP_OFFSETS[] = { 11,-11,13,-13 };
@@ -548,10 +539,9 @@ static int Permill() {
 
 static int IsRepetition(U64 hash) {
 	int limit = max(0, historyCount - bMove50);
-	for (int n = historyCount - 4; n >= limit; n -= 2) {
+	for (int n = historyCount - 4; n >= limit; n -= 2)
 		if (historyHash[n] == hash)
 			return TRUE;
-	}
 	return FALSE;
 }
 
@@ -563,7 +553,7 @@ int objColour(int obj) {
 	return obj & COLOUR_MASK;
 }
 
-int objPiece(int obj) {
+int GetPieceType(int obj) {
 	return obj & PIECE_MASK;
 }
 
@@ -664,24 +654,25 @@ static int EvalPosition() {
 	int mgPhase = 0;
 	int phases[] = { 0, 0, 1, 1, 2, 4, 0, 0,
 					 0, 0, 1, 1, 2, 4, 0, 0 };
+	int insVal[] = { 0, 3, 1, 2, 3, 3, 0, 0,
+					 0, 3, 1, 2, 3, 3, 0, 0 };
+	int insufficient[2] = { 0 };
 	for (int sq = 0; sq < 64; sq++) {
 		const int fr = B88[sq];
 		const int piece = bBoard[fr];
 		if (!piece)
 			continue;
+		insufficient[IS_W[piece]] += insVal[piece];
 		mgPhase += phases[piece];
 		mgScore += pstMg[piece][sq];
 		egScore += pstEg[piece][sq];
 	}
+	if (insufficient[0] < 3 && insufficient[1] < 3)
+		return 0;
 	if (mgPhase > 24) mgPhase = 24;
 	int egPhase = 24 - mgPhase;
 	int score = ((mgScore * mgPhase + egScore * egPhase) * (100 - bMove50)) / (24 * 100);
 	return bTurn == WHITE ? score : -score;
-}
-
-static int FlipSq(int sq) {
-	const int m = (143 - sq) / 12;
-	return 12 * m + sq % 12;
 }
 
 static void InitEval() {
@@ -706,27 +697,27 @@ static void CacheRead(SCache* c) {
 	bMove50 = c->move50;
 }
 
-int moveFromSq(move_t move) {
+int moveFromSq(Move move) {
 	return (int)((move & MOVE_FR_MASK) >> MOVE_FR_BITS);
 }
 
-int moveToSq(move_t move) {
+int moveToSq(Move move) {
 	return (int)((move & MOVE_TO_MASK) >> MOVE_TO_BITS);
 }
 
-int moveToObj(move_t move) {
+int moveToObj(Move move) {
 	return (int)((move & MOVE_TOOBJ_MASK) >> MOVE_TOOBJ_BITS);
 }
 
-int moveFromObj(move_t move) {
+int moveFromObj(Move move) {
 	return (int)((move & MOVE_FROBJ_MASK) >> MOVE_FROBJ_BITS);
 }
 
-int movePromotePiece(move_t move) {
+int movePromotePiece(Move move) {
 	return (int)(((move & MOVE_PROMAS_MASK) >> MOVE_PROMAS_BITS) + 2);
 }
 
-static int AddTT(MoveList* ml, move_t move) {
+static int AddTT(MoveList* ml, Move move) {
 	for (int n = 0; n < ml->movesNum; n++)
 		if (ml->moves[n] == move) {
 			ml->ranks[n] = 32000;
@@ -735,7 +726,7 @@ static int AddTT(MoveList* ml, move_t move) {
 	return 0;
 }
 
-static void AddQuiet(MoveList* ml, move_t move) {
+static void AddQuiet(MoveList* ml, Move move) {
 	if (ml->noisy)
 		return;
 	ml->moves[ml->movesNum] = move;
@@ -746,13 +737,13 @@ static void AddQuiet(MoveList* ml, move_t move) {
 const int RANK_ATTACKER[] = { 0,    600,  500,  400,  300,  200,  100, 0, 0,    600,  500,  400,  300,  200,  100 };
 const int RANK_DEFENDER[] = { 2000, 1000, 3000, 3000, 5000, 9000, 0,   0, 2000, 1000, 3000, 3000, 5000, 9000, 0 };
 
-static void AddNoisy(MoveList* ml, move_t move) {
+static void AddNoisy(MoveList* ml, Move move) {
 	ml->moves[ml->movesNum] = move;
 	ml->ranks[ml->movesNum] = RANK_ATTACKER[moveFromObj(move)] + RANK_DEFENDER[moveToObj(move)];
 	ml->movesNum++;
 }
 
-static move_t GetNextMove(MoveList* ml) {
+static Move GetNextMove(MoveList* ml) {
 	if (ml->moveNext >= ml->movesNum)
 		return 0;
 	int bstIndex = ml->moveNext;
@@ -819,7 +810,7 @@ static void GenBlackCastlingMoves(MoveList* ml) {
 	}
 }
 
-static void GenPawnMoves(MoveList* ml, move_t frMove) {
+static void GenPawnMoves(MoveList* ml, Move frMove) {
 	const int fr = moveFromSq(frMove);
 	const int cx = ColourIndex(bTurn);
 	const int* CAN_CAPTURE = WB_CAN_CAPTURE[cx];
@@ -840,7 +831,7 @@ static void GenPawnMoves(MoveList* ml, move_t frMove) {
 		AddNoisy(ml, frMove | (toObj << MOVE_TOOBJ_BITS) | to);
 }
 
-static void GenEnPassPawnMoves(MoveList* ml, move_t frMove) {
+static void GenEnPassPawnMoves(MoveList* ml, Move frMove) {
 	const int fr = moveFromSq(frMove);
 	const int cx = ColourIndex(bTurn);
 	const int OFFSET_DIAG1 = WB_OFFSET_DIAG1[cx];
@@ -854,7 +845,7 @@ static void GenEnPassPawnMoves(MoveList* ml, move_t frMove) {
 		AddNoisy(ml, frMove | to | MOVE_EPTAKE_MASK);
 }
 
-static void GenHomePawnMoves(MoveList* ml, move_t frMove) {
+static void GenHomePawnMoves(MoveList* ml, Move frMove) {
 	const int fr = moveFromSq(frMove);
 	const int cx = ColourIndex(bTurn);
 	const int* CAN_CAPTURE = WB_CAN_CAPTURE[cx];
@@ -879,7 +870,7 @@ static void GenHomePawnMoves(MoveList* ml, move_t frMove) {
 		AddNoisy(ml, frMove | (toObj << MOVE_TOOBJ_BITS) | to);
 }
 
-static void GenPromotePawnMoves(MoveList* ml, move_t frMove) {
+static void GenPromotePawnMoves(MoveList* ml, Move frMove) {
 	const int fr = moveFromSq(frMove);
 	const int cx = ColourIndex(bTurn);
 	const int* CAN_CAPTURE = WB_CAN_CAPTURE[cx];
@@ -916,7 +907,7 @@ static void GenPromotePawnMoves(MoveList* ml, move_t frMove) {
 	}
 }
 
-static void GenKingMoves(MoveList* ml, move_t frMove) {
+static void GenKingMoves(MoveList* ml, Move frMove) {
 	const int fr = moveFromSq(frMove);
 	const int cx = ColourIndex(bTurn);
 	const int cy = ColourIndex(ColourToggle(bTurn));
@@ -931,7 +922,7 @@ static void GenKingMoves(MoveList* ml, move_t frMove) {
 	}
 }
 
-static void GenKnightMoves(MoveList* ml, move_t frMove) {
+static void GenKnightMoves(MoveList* ml, Move frMove) {
 
 	int* b = bBoard;
 
@@ -954,7 +945,7 @@ static void GenKnightMoves(MoveList* ml, move_t frMove) {
 	}
 }
 
-void GenBishopMoves(MoveList* ml, move_t frMove) {
+void GenBishopMoves(MoveList* ml, Move frMove) {
 
 	int* b = bBoard;
 
@@ -980,7 +971,7 @@ void GenBishopMoves(MoveList* ml, move_t frMove) {
 	}
 }
 
-static void GenRookMoves(MoveList* ml, move_t frMove) {
+static void GenRookMoves(MoveList* ml, Move frMove) {
 	const int fr = moveFromSq(frMove);
 	const int cx = ColourIndex(bTurn);
 	const int* CAN_CAPTURE = WB_CAN_CAPTURE[cx];
@@ -1003,7 +994,7 @@ static void GenRookMoves(MoveList* ml, move_t frMove) {
 	}
 }
 
-static void GenQueenMoves(MoveList* ml, move_t frMove) {
+static void GenQueenMoves(MoveList* ml, Move frMove) {
 	const int fr = moveFromSq(frMove);
 	const int cx = ColourIndex(bTurn);
 	const int* CAN_CAPTURE = WB_CAN_CAPTURE[cx];
@@ -1038,13 +1029,13 @@ static void GenMoves(MoveList* ml) {
 		GenBlackCastlingMoves(ml);
 	for (int i = 0; i < 64; i++) {
 		const int fr = B88[i];
-		const int frObj = bBoard[fr];
-		if (!OUR_PIECE[frObj])
+		const int fromPiece = bBoard[fr];
+		if (!OUR_PIECE[fromPiece])
 			continue;
-		const int frPiece = objPiece(frObj);
+		const int fromPT = GetPieceType(fromPiece);
 		const int frRank = bRank[fr];
-		const move_t frMove = (move_t)((frObj << MOVE_FROBJ_BITS) | (fr << MOVE_FR_BITS));
-		switch (frPiece) {
+		const Move frMove = (Move)((fromPiece << MOVE_FROBJ_BITS) | (fr << MOVE_FR_BITS));
+		switch (fromPT) {
 		case KING:
 			GenKingMoves(ml, frMove);
 			break;
@@ -1089,7 +1080,7 @@ static void InitMoveList(MoveList* ml, int noisy) {
 	GenMoves(ml);
 }
 
-static char* MoveToUci(move_t move) {
+static char* MoveToUci(Move move) {
 	static char fm[6];
 	const int fr = moveFromSq(move);
 	const int to = moveToSq(move);
@@ -1108,7 +1099,7 @@ static char* MoveToUci(move_t move) {
 	return fm;
 }
 
-static void MakeSpecialMove(move_t move) {
+static void MakeSpecialMove(Move move) {
 	int* b = bBoard;
 	const int to = moveToSq(move);
 	const int frObj = moveFromObj(move);
@@ -1151,7 +1142,7 @@ static void MakeSpecialMove(move_t move) {
 	}
 }
 
-static void UnmakeSpecialMove(move_t move) {
+static void UnmakeSpecialMove(Move move) {
 	int* b = bBoard;
 	const int fr = moveFromSq(move);
 	const int to = moveToSq(move);
@@ -1187,7 +1178,7 @@ static void UnmakeSpecialMove(move_t move) {
 	}
 }
 
-static void MakeMove(move_t move) {
+static void MakeMove(Move move) {
 	const int fr = moveFromSq(move);
 	const int to = moveToSq(move);
 	const int frObj = moveFromObj(move);
@@ -1200,11 +1191,11 @@ static void MakeMove(move_t move) {
 	bMove50++;
 	if (move & MOVE_IKKY_MASK)
 		MakeSpecialMove(move);
-	if ((move & MOVE_DRAW_MASK) || objPiece(frObj) == PAWN)
+	if ((move & MOVE_DRAW_MASK) || GetPieceType(frObj) == PAWN)
 		bMove50 = 0;
 }
 
-static void UnmakeMove(move_t move) {
+static void UnmakeMove(Move move) {
 	const int fr = moveFromSq(move);
 	const int to = moveToSq(move);
 	const int toObj = moveToObj(move);
@@ -1216,17 +1207,14 @@ static void UnmakeMove(move_t move) {
 	bTurn = ColourToggle(bTurn);
 }
 
-static void PlayUciMove(char* uciMove) {
+static Move UciToMove(char* uciMove) {
 	MoveList ml;
 	InitMoveList(&ml, ALL_MOVES);
-	move_t move = 0;
-	while ((move = GetNextMove(&ml))) {
-		if (!strcmp(MoveToUci(move), uciMove)) {
-			MakeMove(move);
-			return;
-		}
-	}
-	fprintf(stderr, "cannot play uci move %s\n", uciMove);
+	Move move = 0;
+	while ((move = GetNextMove(&ml)))
+		if (!strcmp(MoveToUci(move), uciMove))
+			return move;
+	return 0;
 }
 
 static void ResetInfo() {
@@ -1244,7 +1232,7 @@ static U32 PerftDriver(int depth) {
 	const int nextTurn = ColourToggle(turn);
 	const int cx = ColourIndex(turn);
 	U32 count = 0;
-	move_t move;
+	Move move;
 	SCache sc;
 	MoveList ml;
 	CacheWrite(&sc);
@@ -1295,7 +1283,7 @@ void PrintPerformanceHeader() {
 	printf("-----------------------------\n");
 }
 
-static void PrintPv(move_t move) {
+static void PrintPv(Move move) {
 	SCache sc;
 	MoveList ml;
 	CacheWrite(&sc);
@@ -1313,7 +1301,7 @@ static void PrintPv(move_t move) {
 	printf(" %s", MoveToUci(move));
 	const U64 hash = GetHash();
 	TTEntry* tt_entry = tt + (hash % TT_MASK);
-	if (tt_entry->hash != hash || tt_entry->flag != EXACT  || IsRepetition(hash)) {
+	if (tt_entry->hash != hash || tt_entry->flag != EXACT || IsRepetition(hash)) {
 		UnmakeMove(move);
 		CacheRead(&sc);
 		return;
@@ -1361,7 +1349,7 @@ static int SearchQuiescence(int alpha, int beta, int depth, int ply) {
 	const int turn = bTurn;
 	const int nextTurn = ColourToggle(turn);
 	const int cx = ColourIndex(turn);
-	move_t move;
+	Move move;
 	int score = 0;
 	int played = 0;
 	SCache sc;
@@ -1413,7 +1401,7 @@ static int SearchAlpha(int alpha, int beta, int depth, int ply) {
 		return 0;
 	const int pvNode = alpha != (beta - 1);
 	U64 hash = GetHash();
-	if (IsRepetition(hash) || bMove50 >= 100)
+	if (ply && (IsRepetition(hash) || bMove50 >= 100))
 		return 0;
 	int tt_move = 0;
 	TTEntry* tt_entry = tt + (hash % TT_MASK);
@@ -1426,7 +1414,7 @@ static int SearchAlpha(int alpha, int beta, int depth, int ply) {
 	historyHash[historyCount++] = hash;
 	U8 tt_flag = LOWER;
 	const int rootNode = ply == 0;
-	move_t move;
+	Move move;
 	int bestScore = -MATE;
 	int bestMove = tt_move;
 	int score = 0;
@@ -1499,7 +1487,7 @@ static void SearchIteratively() {
 			delta += delta / 2;
 			if (score <= alpha)
 				alpha = MAX(-MATE, score - delta);
-			else if (score >= beta) 
+			else if (score >= beta)
 				beta = MIN(MATE, score + delta);
 			else
 				break;
@@ -1605,7 +1593,6 @@ static void SetFen(char* fen) {
 }
 
 static void ParsePosition(char* ptr) {
-	historyCount = 0;
 	char token[80], fen[80];
 	ptr = ParseToken(ptr, token);
 	if (strcmp(token, "fen") == 0) {
@@ -1623,12 +1610,20 @@ static void ParsePosition(char* ptr) {
 		ptr = ParseToken(ptr, token);
 		SetFen(START_FEN);
 	}
+	historyCount = 0;
 	if (strcmp(token, "moves") == 0)
 		while (1) {
 			ptr = ParseToken(ptr, token);
 			if (*token == '\0')
 				break;
-			PlayUciMove(token);
+			Move move = UciToMove(token);
+			U64 hash = GetHash();
+			int ptFrom = moveFromObj(move) & 7;
+			int ptTo = moveToObj(move) & 7;
+			if (ptFrom == PAWN || ptTo)
+				historyCount = 0;
+			historyHash[historyCount++] = hash;
+			MakeMove(move);
 		}
 }
 
@@ -1684,13 +1679,11 @@ static void UciCommand(char* line) {
 		UciPerformance();
 	else if (!strncmp(line, "bench", 5))
 		UciBench();
-	else if (!strncmp(line, "exit", 4))
+	else if (!strncmp(line, "quit", 4))
 		exit(0);
 }
 
 static void UciLoop() {
-	//UciCommand("position fen 5k2/8/1p1N4/1P1P4/2n1P3/2q2B1P/8/1K6 b - - 2 47");
-	//UciCommand("go movetime 1000");
 	char line[4000];
 	while (fgets(line, sizeof(line), stdin) != NULL)
 		UciCommand(line);
