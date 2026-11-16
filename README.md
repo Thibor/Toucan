@@ -18,9 +18,11 @@ FIDE-rules-compliant chess engine
 
 ## Features
 
+- Strength 2400 elo
+- Protocol UCI
 - Single file
 - Board 64 squares
-- Evaluation 12 Piece Square Tables
+- Evaluation 6 Piece Square Tables
 - En passant
 - Underpromotions (knight, bishop, rook)
 - 2-fold repetition detection
